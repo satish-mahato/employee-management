@@ -2,6 +2,8 @@ import { Suspense } from "react";
 import { useRoutes, Routes, Route } from "react-router-dom";
 import Home from "./components/home";
 import BulkAttendance from "./components/dashboard/BulkAttendance";
+import MonthlyAttendance from "./components/dashboard/MonthlyAttendance";
+import EmployeeManagement from "./components/dashboard/EmployeeManagement";
 import routes from "tempo-routes";
 
 function App() {
@@ -11,6 +13,8 @@ function App() {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/bulk-attendance" element={<BulkAttendance />} />
+          <Route path="/monthly-attendance" element={<MonthlyAttendance />} />
+          <Route path="/manage-employees" element={<EmployeeManagement />} />
         </Routes>
         {import.meta.env.VITE_TEMPO === "true" && useRoutes(routes)}
       </>

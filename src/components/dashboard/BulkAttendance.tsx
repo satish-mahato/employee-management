@@ -1,13 +1,12 @@
 import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import {
   Table,
   TableBody,
@@ -16,11 +15,15 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { defaultEmployees, Employee } from "./EmployeeGrid";
+import { Employee, defaultEmployees } from "@/lib/data";
+import { format } from "date-fns";
+import { CalendarIcon } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 const BulkAttendance = () => {
   const [employees, setEmployees] =
     React.useState<Employee[]>(defaultEmployees);
+  const [date, setDate] = React.useState<Date>(new Date());
 
   const handleIndividualUpdate = (
     employeeId: string,
@@ -36,8 +39,30 @@ const BulkAttendance = () => {
   return (
     <div className="container mx-auto py-6">
       <Card className="bg-white">
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Bulk Attendance Update</CardTitle>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                variant={"outline"}
+                className={cn(
+                  "w-[240px] justify-start text-left font-normal",
+                  !date && "text-muted-foreground",
+                )}
+              >
+                <CalendarIcon className="mr-2 h-4 w-4" />
+                {date ? format(date, "PPP") : <span>Pick a date</span>}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="end">
+              <Calendar
+                mode="single"
+                selected={date}
+                onSelect={(newDate) => setDate(newDate || new Date())}
+                initialFocus
+              />
+            </PopoverContent>
+          </Popover>
         </CardHeader>
         <CardContent>
           <Table>
@@ -102,7 +127,12 @@ const BulkAttendance = () => {
             <Button
               onClick={() => {
                 // Here you would typically make an API call to update the attendance
-                console.log("Updating attendance:", employees);
+                console.log(
+                  "Updating attendance for",
+                  format(date, "PPP"),
+                  ":",
+                  employees,
+                );
               }}
             >
               Update Attendance

@@ -1,6 +1,4 @@
-import { createClient } from "@supabase/supabase-js";
+import { mockDb } from "./mockDb";
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "";
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
-
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+// This is a temporary mock until Supabase is properly connected
+export const supabase = mockDb;

@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { CalendarCheck2, DollarSign, UserCheck } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 interface EmployeeCardProps {
   name?: string;
@@ -19,6 +20,7 @@ interface EmployeeCardProps {
   attendanceStreak?: number;
   currentBalance?: number;
   status?: "present" | "half-day" | "absent";
+  id?: string;
 }
 
 const EmployeeCard = ({
@@ -29,7 +31,9 @@ const EmployeeCard = ({
   attendanceStreak = 5,
   currentBalance = 2500,
   status = "present",
+  id = "1",
 }: EmployeeCardProps) => {
+  const navigate = useNavigate();
   const getStatusColor = (status: string) => {
     switch (status) {
       case "present":
@@ -89,10 +93,10 @@ const EmployeeCard = ({
         <Button
           variant="outline"
           className="w-[48%] space-x-2"
-          onClick={() => console.log("Mark attendance clicked")}
+          onClick={() => navigate(`/monthly-attendance?employee=${id}`)}
         >
           <UserCheck className="h-4 w-4" />
-          <span>Attendance</span>
+          <span>View Attendance</span>
         </Button>
         <Button
           className="w-[48%] space-x-2"

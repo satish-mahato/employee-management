@@ -1,6 +1,12 @@
 import React from "react";
 import { Input } from "@/components/ui/input";
-import { Search, DollarSign, Users } from "lucide-react";
+import {
+  Search,
+  DollarSign,
+  Users,
+  CalendarCheck2,
+  UserPlus,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 
@@ -27,14 +33,32 @@ const Header = ({
       </div>
 
       <div className="flex items-center gap-4">
-        <Button
-          variant="outline"
-          className="flex items-center gap-2"
-          onClick={() => navigate("/bulk-attendance")}
-        >
-          <Users className="h-4 w-4" />
-          Bulk Attendance
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            className="flex items-center gap-2"
+            onClick={() => navigate("/manage-employees")}
+          >
+            <UserPlus className="h-4 w-4" />
+            Manage Employees
+          </Button>
+          <Button
+            variant="outline"
+            className="flex items-center gap-2"
+            onClick={() => navigate("/bulk-attendance")}
+          >
+            <Users className="h-4 w-4" />
+            Bulk Attendance
+          </Button>
+          <Button
+            variant="outline"
+            className="flex items-center gap-2"
+            onClick={() => navigate("/monthly-attendance")}
+          >
+            <CalendarCheck2 className="h-4 w-4" />
+            View Attendance
+          </Button>
+        </div>
         <div className="flex items-center space-x-2 bg-slate-100 px-4 py-2 rounded-lg">
           <DollarSign className="h-5 w-5 text-slate-700" />
           <span className="font-medium text-slate-900">
