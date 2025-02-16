@@ -13,22 +13,30 @@ import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Plus, Pencil, Trash2 } from "lucide-react";
-import { Employee } from "@/lib/data";
+import { Plus, Pencil, Trash2, User } from "lucide-react";
+import { Employee, Role } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
-
-type Role = {
-  id: string;
-  name: string;
-  salary: number;
-};
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useToast } from "@/components/ui/use-toast";
 
 const EmployeeManagement = () => {
+  const { toast } = useToast();
   const [employees, setEmployees] = React.useState<Employee[]>([]);
   const [roles, setRoles] = React.useState<Role[]>([]);
   const [isAddDialogOpen, setIsAddDialogOpen] = React.useState(false);
@@ -42,27 +50,51 @@ const EmployeeManagement = () => {
   });
   const [newRole, setNewRole] = React.useState({
     name: "",
-    salary: 0,
+    salary: "",
   });
+  const [loading, setLoading] = React.useState(true);
 
   React.useEffect(() => {
-    fetchEmployees();
-    fetchRoles();
+    Promise.all([fetchEmployees(), fetchRoles()]).finally(() =>
+      setLoading(false),
+    );
   }, []);
 
   const fetchEmployees = async () => {
-    const { data, error } = await supabase.from("employees").select("*");
+    const { data, error } = await supabase.from("employees").select(`
+        *,
+        roles:role_id (id, name, salary)
+      `);
+
     if (error) {
       console.error("Error fetching employees:", error);
+      toast({
+        variant: "destructive",
+        title: "Error fetching employees",
+        description: error.message,
+      });
       return;
     }
-    setEmployees(data);
+
+    if (data) {
+      const formattedEmployees = data.map((emp) => ({
+        ...emp,
+        role: emp.roles?.name || "N/A",
+        currentBalance: emp.roles?.salary || 0,
+      }));
+      setEmployees(formattedEmployees);
+    }
   };
 
   const fetchRoles = async () => {
     const { data, error } = await supabase.from("roles").select("*");
     if (error) {
       console.error("Error fetching roles:", error);
+      toast({
+        variant: "destructive",
+        title: "Error fetching roles",
+        description: error.message,
+      });
       return;
     }
     setRoles(data);
@@ -70,271 +102,354 @@ const EmployeeManagement = () => {
 
   const handleEmployeeSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const selectedRole = roles.find((role) => role.name === formData.role);
-
-    if (editingEmployee) {
-      const { error } = await supabase
-        .from("employees")
-        .update({
-          name: formData.name,
-          role: formData.role,
-        })
-        .eq("id", editingEmployee.id);
-
-      if (error) {
-        console.error("Error updating employee:", error);
-        return;
-      }
-    } else {
-      const { error } = await supabase.from("employees").insert([
-        {
-          name: formData.name,
-          role: formData.role,
-          avatarUrl: `https://api.dicebear.com/7.x/avataaars/svg?seed=${formData.name}`,
-          attendancePercentage: 100,
-          attendanceStreak: 0,
-          currentBalance: selectedRole?.salary || 0,
-          status: "present",
-        },
-      ]);
-
-      if (error) {
-        console.error("Error adding employee:", error);
-        return;
-      }
+    if (!formData.name || !formData.role) {
+      toast({
+        variant: "destructive",
+        title: "Missing fields",
+        description: "Please fill in all required fields",
+      });
+      return;
     }
 
-    setFormData({ name: "", role: "" });
-    setEditingEmployee(null);
-    setIsAddDialogOpen(false);
-    fetchEmployees();
+    try {
+      if (editingEmployee) {
+        const { error } = await supabase
+          .from("employees")
+          .update({
+            name: formData.name,
+            role_id: formData.role,
+          })
+          .eq("id", editingEmployee.id);
+
+        if (error) throw error;
+        toast({ title: "Employee updated successfully" });
+      } else {
+        const { error } = await supabase.from("employees").insert([
+          {
+            name: formData.name,
+            role_id: formData.role,
+            avatar_url: `https://api.dicebear.com/7.x/avataaars/svg?seed=${formData.name}`,
+            attendance_percentage: 100,
+            attendance_streak: 0,
+            status: "present",
+          },
+        ]);
+
+        if (error) throw error;
+        toast({ title: "Employee added successfully" });
+      }
+
+      setFormData({ name: "", role: "" });
+      setEditingEmployee(null);
+      setIsAddDialogOpen(false);
+      await fetchEmployees();
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Error submitting employee",
+        description: error.message,
+      });
+    }
   };
 
   const handleAddRole = async (e: React.FormEvent) => {
     e.preventDefault();
-    const { error } = await supabase.from("roles").insert([
-      {
-        name: newRole.name,
-        salary: newRole.salary,
-      },
-    ]);
+    try {
+      const { error } = await supabase.from("roles").insert([
+        {
+          name: newRole.name,
+          salary: parseFloat(newRole.salary),
+        },
+      ]);
 
-    if (error) {
-      console.error("Error adding role:", error);
-      return;
+      if (error) throw error;
+
+      toast({ title: "Role added successfully" });
+      setNewRole({ name: "", salary: "" });
+      fetchRoles();
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Error adding role",
+        description: error.message,
+      });
     }
-
-    setNewRole({ name: "", salary: 0 });
-    fetchRoles();
   };
 
-  const handleDeleteRole = async (id: string) => {
-    const { error } = await supabase.from("roles").delete().eq("id", id);
-    if (error) {
-      console.error("Error deleting role:", error);
-      return;
-    }
-    fetchRoles();
-  };
+  const confirmDelete = async (type: "employee" | "role", id: string) => {
+    if (!confirm(`Are you sure you want to delete this ${type}?`)) return;
 
-  const handleDeleteEmployee = async (id: string) => {
-    const { error } = await supabase.from("employees").delete().eq("id", id);
-    if (error) {
-      console.error("Error deleting employee:", error);
-      return;
+    try {
+      const { error } = await supabase
+        .from(type === "employee" ? "employees" : "roles")
+        .delete()
+        .eq("id", id);
+
+      if (error) throw error;
+
+      toast({
+        title: `${type.charAt(0).toUpperCase() + type.slice(1)} deleted`,
+      });
+      type === "employee" ? fetchEmployees() : fetchRoles();
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: `Error deleting ${type}`,
+        description: error.message,
+      });
     }
-    fetchEmployees();
   };
 
   const handleEditEmployee = (employee: Employee) => {
     setEditingEmployee(employee);
     setFormData({
       name: employee.name,
-      role: employee.role,
+      role: employee.role_id,
     });
     setIsAddDialogOpen(true);
   };
 
   return (
-    <div className="container mx-auto py-6">
-      <Card className="bg-white">
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>Employee Management</CardTitle>
-          <div className="flex gap-2">
-            <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-              <DialogTrigger asChild>
-                <Button className="flex items-center gap-2">
-                  <Plus className="h-4 w-4" />
-                  Add Employee
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>
-                    {editingEmployee ? "Edit Employee" : "Add New Employee"}
-                  </DialogTitle>
-                </DialogHeader>
-                <form onSubmit={handleEmployeeSubmit} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="name">Name</Label>
-                    <Input
-                      id="name"
-                      value={formData.name}
-                      onChange={(e) =>
-                        setFormData({ ...formData, name: e.target.value })
-                      }
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="role">Role</Label>
-                    <select
-                      id="role"
-                      value={formData.role}
-                      onChange={(e) =>
-                        setFormData({ ...formData, role: e.target.value })
-                      }
-                      className="w-full p-2 border rounded"
-                      required
-                    >
-                      <option value="">Select a role</option>
-                      {roles.map((role) => (
-                        <option key={role.id} value={role.name}>
-                          {role.name} (${role.salary})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <Button type="submit" className="w-full">
-                    {editingEmployee ? "Update" : "Add"} Employee
-                  </Button>
-                </form>
-              </DialogContent>
-            </Dialog>
-
-            <Dialog open={isRoleDialogOpen} onOpenChange={setIsRoleDialogOpen}>
-              <DialogTrigger asChild>
-                <Button variant="outline" className="flex items-center gap-2">
-                  <Plus className="h-4 w-4" />
-                  Manage Roles
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-h-[80vh] overflow-auto">
-                <DialogHeader>
-                  <DialogTitle>Manage Roles</DialogTitle>
-                </DialogHeader>
-                <form onSubmit={handleAddRole} className="space-y-4 mb-6">
-                  <div className="space-y-2">
-                    <Label htmlFor="roleName">Role Name</Label>
-                    <Input
-                      id="roleName"
-                      value={newRole.name}
-                      onChange={(e) =>
-                        setNewRole({ ...newRole, name: e.target.value })
-                      }
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="roleSalary">Salary</Label>
-                    <Input
-                      id="roleSalary"
-                      type="number"
-                      value={newRole.salary}
-                      onChange={(e) =>
-                        setNewRole({
-                          ...newRole,
-                          salary: Number(e.target.value),
-                        })
-                      }
-                      required
-                    />
-                  </div>
-                  <Button type="submit" className="w-full">
-                    Add Role
-                  </Button>
-                </form>
-
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Role</TableHead>
-                      <TableHead>Salary</TableHead>
-                      <TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {roles.map((role) => (
-                      <TableRow key={role.id}>
-                        <TableCell>{role.name}</TableCell>
-                        <TableCell>${role.salary}</TableCell>
-                        <TableCell>
-                          <Button
-                            variant="destructive"
-                            size="icon"
-                            onClick={() => handleDeleteRole(role.id)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </DialogContent>
-            </Dialog>
+    <Card className="shadow-lg">
+      <CardHeader className="border-b">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-2xl">Employee Management</CardTitle>
+          <div className="space-x-2">
+            <Button onClick={() => setIsAddDialogOpen(true)}>
+              <Plus className="mr-2 h-4 w-4" />
+              Add Employee
+            </Button>
+            <Button variant="outline" onClick={() => setIsRoleDialogOpen(true)}>
+              Manage Roles
+            </Button>
           </div>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
+        </div>
+      </CardHeader>
+
+      <CardContent className="p-6">
+        {loading ? (
+          <div className="space-y-4">
+            {[...Array(5)].map((_, i) => (
+              <Skeleton key={i} className="h-12 w-full" />
+            ))}
+          </div>
+        ) : (
+          <Table className="border rounded-lg">
+            <TableHeader className="bg-gray-50">
               <TableRow>
-                <TableHead>Name</TableHead>
+                <TableHead className="w-[200px]">Employee</TableHead>
                 <TableHead>Role</TableHead>
                 <TableHead>Salary</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>Actions</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {employees.map((employee) => {
-                const role = roles.find((r) => r.name === employee.role);
+                const role = roles.find((r) => r.id === employee.role_id);
                 return (
-                  <TableRow key={employee.id}>
+                  <TableRow key={employee.id} className="hover:bg-gray-50">
                     <TableCell className="font-medium">
-                      {employee.name}
+                      <div className="flex items-center space-x-3">
+                        <Avatar>
+                          <AvatarImage src={employee.avatar_url} />
+                          <AvatarFallback>
+                            <User className="h-5 w-5" />
+                          </AvatarFallback>
+                        </Avatar>
+                        <span>{employee.name}</span>
+                      </div>
                     </TableCell>
                     <TableCell>{employee.role}</TableCell>
-                    <TableCell>${role?.salary || "N/A"}</TableCell>
-                    <TableCell className="capitalize">
-                      {employee.status}
+                    <TableCell>
+                      {role?.salary?.toLocaleString("en-US", {
+                        style: "currency",
+                        currency: "USD",
+                      })}
                     </TableCell>
                     <TableCell>
-                      <div className="flex gap-2">
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          onClick={() => handleEditEmployee(employee)}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          onClick={() => handleDeleteEmployee(employee.id)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
+                      <Badge
+                        variant={
+                          employee.status === "present"
+                            ? "default"
+                            : "destructive"
+                        }
+                      >
+                        {employee.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right space-x-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleEditEmployee(employee)}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-red-600 hover:bg-red-50"
+                        onClick={() => confirmDelete("employee", employee.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </TableCell>
                   </TableRow>
                 );
               })}
             </TableBody>
           </Table>
-        </CardContent>
-      </Card>
-    </div>
+        )}
+
+        {/* Add/Edit Employee Dialog */}
+        <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="text-lg">
+                {editingEmployee ? "Edit Employee" : "Add New Employee"}
+              </DialogTitle>
+              <DialogDescription>
+                {editingEmployee
+                  ? "Update employee details"
+                  : "Add a new employee to your organization"}
+              </DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleEmployeeSubmit} className="space-y-4">
+              <div>
+                <Label htmlFor="name">Full Name</Label>
+                <Input
+                  id="name"
+                  value={formData.name}
+                  onChange={(e) =>
+                    setFormData({ ...formData, name: e.target.value })
+                  }
+                  placeholder="John Doe"
+                />
+              </div>
+              <div>
+                <Label htmlFor="role">Role</Label>
+                <Select
+                  value={formData.role}
+                  onValueChange={(value) =>
+                    setFormData({ ...formData, role: value })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a role" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {roles.map((role) => (
+                      <SelectItem key={role.id} value={role.id}>
+                        {role.name} -{" "}
+                        {role.salary.toLocaleString("en-US", {
+                          style: "currency",
+                          currency: "USD",
+                        })}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <DialogFooter>
+                <Button type="submit">
+                  {editingEmployee ? "Save Changes" : "Add Employee"}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+
+        {/* Manage Roles Dialog */}
+        <Dialog open={isRoleDialogOpen} onOpenChange={setIsRoleDialogOpen}>
+          <DialogContent className="sm:max-w-xl">
+            <DialogHeader>
+              <DialogTitle className="text-lg">Manage Roles</DialogTitle>
+              <DialogDescription>
+                Add or remove job roles and their corresponding salaries
+              </DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleAddRole} className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="role-name">Role Name</Label>
+                  <Input
+                    id="role-name"
+                    value={newRole.name}
+                    onChange={(e) =>
+                      setNewRole({ ...newRole, name: e.target.value })
+                    }
+                    placeholder="e.g., Software Engineer"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="salary">Salary</Label>
+                  <Input
+                    id="salary"
+                    type="number"
+                    value={newRole.salary}
+                    onChange={(e) =>
+                      setNewRole({ ...newRole, salary: e.target.value })
+                    }
+                    placeholder="0.00"
+                    step="0.01"
+                  />
+                </div>
+              </div>
+              <Button type="submit" className="w-full">
+                <Plus className="mr-2 h-4 w-4" />
+                Add New Role
+              </Button>
+            </form>
+
+            <div className="rounded-lg border">
+              <Table>
+                <TableHeader className="bg-gray-50">
+                  <TableRow>
+                    <TableHead className="w-[200px]">Role</TableHead>
+                    <TableHead>Salary</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {roles.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={3} className="text-center h-24">
+                        No roles found.
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    roles.map((role) => (
+                      <TableRow key={role.id}>
+                        <TableCell className="font-medium">
+                          {role.name}
+                        </TableCell>
+                        <TableCell>
+                          {role.salary.toLocaleString("en-US", {
+                            style: "currency",
+                            currency: "USD",
+                          })}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-red-600 hover:bg-red-50"
+                            onClick={() => confirmDelete("role", role.id)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </DialogContent>
+        </Dialog>
+      </CardContent>
+    </Card>
   );
 };
 

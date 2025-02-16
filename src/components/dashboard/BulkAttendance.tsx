@@ -15,38 +15,147 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Employee, defaultEmployees } from "@/lib/data";
 import { format } from "date-fns";
 import { CalendarIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/lib/supabase";
+import { Employee } from "@/lib/types";
+import { useToast } from "@/components/ui/use-toast";
 
 const BulkAttendance = () => {
-  const [employees, setEmployees] =
-    React.useState<Employee[]>(defaultEmployees);
+  const { toast } = useToast();
+  const [employees, setEmployees] = React.useState<Employee[]>([]);
   const [date, setDate] = React.useState<Date>(new Date());
+  const [loading, setLoading] = React.useState(true);
+  const [attendanceMap, setAttendanceMap] = React.useState<
+    Record<string, string>
+  >({});
 
-  const handleIndividualUpdate = (
+  React.useEffect(() => {
+    fetchEmployees();
+    fetchAttendance();
+  }, [date]);
+
+  const fetchEmployees = async () => {
+    try {
+      const { data, error } = await supabase.from("employees").select(`
+          *,
+          roles:role_id (id, name, salary)
+        `);
+
+      if (error) throw error;
+
+      if (data) {
+        const formattedEmployees = data.map((emp) => ({
+          ...emp,
+          role: emp.roles?.name || "N/A",
+          currentBalance: emp.roles?.salary || 0,
+        }));
+        setEmployees(formattedEmployees);
+      }
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Error fetching employees",
+        description: error.message,
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchAttendance = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("attendance")
+        .select("*")
+        .eq("date", format(date, "yyyy-MM-dd"));
+
+      if (error) throw error;
+
+      const newAttendanceMap = {};
+      data?.forEach((record) => {
+        newAttendanceMap[record.employee_id] = record.status;
+      });
+      setAttendanceMap(newAttendanceMap);
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Error fetching attendance",
+        description: error.message,
+      });
+    }
+  };
+
+  const handleIndividualUpdate = async (
     employeeId: string,
     newStatus: "present" | "half-day" | "absent",
   ) => {
-    setEmployees(
-      employees.map((emp) =>
-        emp.id === employeeId ? { ...emp, status: newStatus } : emp,
-      ),
-    );
+    try {
+      const { error } = await supabase.from("attendance").upsert({
+        employee_id: employeeId,
+        date: format(date, "yyyy-MM-dd"),
+        status: newStatus,
+      });
+
+      if (error) throw error;
+
+      setAttendanceMap((prev) => ({
+        ...prev,
+        [employeeId]: newStatus,
+      }));
+
+      toast({
+        title: "Status updated",
+        description: `Attendance marked as ${newStatus} for ${format(date, "PPP")}`,
+      });
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Error updating attendance",
+        description: error.message,
+      });
+    }
+  };
+
+  const handleBulkUpdate = async () => {
+    try {
+      const { error } = await supabase.from("attendance").upsert(
+        Object.entries(attendanceMap).map(([employeeId, status]) => ({
+          employee_id: employeeId,
+          date: format(date, "yyyy-MM-dd"),
+          status,
+        })),
+      );
+
+      if (error) throw error;
+
+      toast({
+        title: "Attendance Updated",
+        description: `Bulk attendance updated for ${format(date, "PPP")}`,
+      });
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Error updating attendance",
+        description: error.message,
+      });
+    }
   };
 
   return (
-    <div className="container mx-auto py-6">
-      <Card className="bg-white">
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>Bulk Attendance Update</CardTitle>
+    <div className="container mx-auto py-6 px-4 sm:px-6 lg:px-8">
+      <Card className="bg-white shadow-lg rounded-lg">
+        <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-6 border-b">
+          <CardTitle className="text-2xl font-bold text-gray-900">
+            Bulk Attendance Update
+          </CardTitle>
           <Popover>
             <PopoverTrigger asChild>
               <Button
                 variant={"outline"}
                 className={cn(
-                  "w-[240px] justify-start text-left font-normal",
+                  "w-[240px] justify-start text-left font-normal hover:bg-gray-50 transition-colors",
                   !date && "text-muted-foreground",
                 )}
               >
@@ -64,76 +173,97 @@ const BulkAttendance = () => {
             </PopoverContent>
           </Popover>
         </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Employee</TableHead>
-                <TableHead>Role</TableHead>
-                <TableHead>Current Status</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {employees.map((employee) => (
-                <TableRow key={employee.id}>
-                  <TableCell className="font-medium">{employee.name}</TableCell>
-                  <TableCell>{employee.role}</TableCell>
-                  <TableCell className="capitalize">
-                    {employee.status}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        variant={
-                          employee.status === "present" ? "default" : "outline"
-                        }
-                        onClick={() =>
-                          handleIndividualUpdate(employee.id, "present")
-                        }
-                      >
-                        Present
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant={
-                          employee.status === "half-day" ? "default" : "outline"
-                        }
-                        onClick={() =>
-                          handleIndividualUpdate(employee.id, "half-day")
-                        }
-                      >
-                        Half-day
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant={
-                          employee.status === "absent" ? "default" : "outline"
-                        }
-                        onClick={() =>
-                          handleIndividualUpdate(employee.id, "absent")
-                        }
-                      >
-                        Absent
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+        <CardContent className="p-6">
+          {loading ? (
+            <div className="text-center py-8">Loading employees...</div>
+          ) : employees.length === 0 ? (
+            <div className="text-center py-8">
+              No employees found. Add some employees first.
+            </div>
+          ) : (
+            <div className="rounded-lg border shadow-sm overflow-hidden">
+              <Table>
+                <TableHeader className="bg-gray-50">
+                  <TableRow>
+                    <TableHead className="text-gray-700">Employee</TableHead>
+                    <TableHead className="text-gray-700">Role</TableHead>
+                    <TableHead className="text-gray-700">
+                      Current Status
+                    </TableHead>
+                    <TableHead className="text-gray-700">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {employees.map((employee) => (
+                    <TableRow
+                      key={employee.id}
+                      className="hover:bg-gray-50 transition-colors"
+                    >
+                      <TableCell className="font-medium text-gray-900">
+                        {employee.name}
+                      </TableCell>
+                      <TableCell className="text-gray-900">
+                        {employee.role}
+                      </TableCell>
+                      <TableCell className="capitalize text-gray-900">
+                        {attendanceMap[employee.id] || "Not marked"}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            variant={
+                              attendanceMap[employee.id] === "present"
+                                ? "default"
+                                : "outline"
+                            }
+                            className="hover:bg-green-100 hover:text-green-800 transition-colors"
+                            onClick={() =>
+                              handleIndividualUpdate(employee.id, "present")
+                            }
+                          >
+                            Present
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant={
+                              attendanceMap[employee.id] === "half-day"
+                                ? "default"
+                                : "outline"
+                            }
+                            className="hover:bg-yellow-100 hover:text-yellow-800 transition-colors"
+                            onClick={() =>
+                              handleIndividualUpdate(employee.id, "half-day")
+                            }
+                          >
+                            Half-day
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant={
+                              attendanceMap[employee.id] === "absent"
+                                ? "default"
+                                : "outline"
+                            }
+                            className="hover:bg-red-100 hover:text-red-800 transition-colors"
+                            onClick={() =>
+                              handleIndividualUpdate(employee.id, "absent")
+                            }
+                          >
+                            Absent
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
           <div className="mt-6 flex justify-end">
             <Button
-              onClick={() => {
-                // Here you would typically make an API call to update the attendance
-                console.log(
-                  "Updating attendance for",
-                  format(date, "PPP"),
-                  ":",
-                  employees,
-                );
-              }}
+              className="bg-blue-600 hover:bg-blue-700 text-white transition-colors"
+              onClick={handleBulkUpdate}
             >
               Update Attendance
             </Button>

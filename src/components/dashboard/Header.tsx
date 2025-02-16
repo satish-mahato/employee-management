@@ -1,5 +1,6 @@
 import React from "react";
 import { Input } from "@/components/ui/input";
+import { Link } from "react-router-dom"; // Fixed import
 import {
   Search,
   DollarSign,
@@ -15,24 +16,35 @@ interface HeaderProps {
   onSearch?: (searchTerm: string) => void;
 }
 
-const Header = ({
+const Header: React.FC<HeaderProps> = ({
   companyBalance = 50000,
-  onSearch = () => console.log("Search triggered"),
-}: HeaderProps) => {
+  onSearch = () => {}, // Removed console.log for cleaner code
+}) => {
   const navigate = useNavigate();
 
   return (
     <header className="w-full h-[72px] px-6 bg-white border-b border-slate-200 flex items-center justify-between">
-      <div className="relative w-[320px]">
-        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-500" />
-        <Input
-          className="pl-10"
-          placeholder="Search employees..."
-          onChange={(e) => onSearch(e.target.value)}
-        />
+      {/* Left Section */}
+      <div className="flex items-center gap-6">
+        {/* Fixed Link usage */}
+        <Link to="/">
+          <h1 className="text-xl font-bold">BMS</h1>
+        </Link>
+
+        {/* Search Bar */}
+        <div className="relative w-[320px]">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-500" />
+          <Input
+            className="pl-10"
+            placeholder="Search employees..."
+            onChange={(e) => onSearch(e.target.value)}
+          />
+        </div>
       </div>
 
+      {/* Right Section */}
       <div className="flex items-center gap-4">
+        {/* Buttons */}
         <div className="flex gap-2">
           <Button
             variant="outline"
@@ -59,6 +71,8 @@ const Header = ({
             View Attendance
           </Button>
         </div>
+
+        {/* Balance Display */}
         <div className="flex items-center space-x-2 bg-slate-100 px-4 py-2 rounded-lg">
           <DollarSign className="h-5 w-5 text-slate-700" />
           <span className="font-medium text-slate-900">

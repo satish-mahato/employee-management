@@ -1,4 +1,10 @@
-import { mockDb } from "./mockDb";
+import { createClient } from "@supabase/supabase-js";
 
-// This is a temporary mock until Supabase is properly connected
-export const supabase = mockDb;
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+if (!supabaseUrl || !supabaseKey) {
+  throw new Error("Missing Supabase environment variables");
+}
+
+export const supabase = createClient(supabaseUrl, supabaseKey);

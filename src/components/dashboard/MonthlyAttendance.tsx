@@ -17,7 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { defaultEmployees } from "@/lib/data";
+import { supabase } from "@/lib/supabase";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import {
   format,
@@ -30,9 +30,62 @@ import {
 const MonthlyAttendance = () => {
   const [searchParams] = useSearchParams();
   const [currentDate, setCurrentDate] = React.useState(new Date());
-  const [selectedEmployee, setSelectedEmployee] = React.useState(
-    searchParams.get("employee") || defaultEmployees[0].id,
+  const [selectedEmployee, setSelectedEmployee] = React.useState<string | null>(
+    searchParams.get("employee") || null
   );
+  const [employees, setEmployees] = React.useState<any[]>([]);
+  const [attendance, setAttendance] = React.useState<any[]>([]);
+  const [loading, setLoading] = React.useState(true);
+
+  useEffect(() => {
+    fetchEmployees();
+  }, []);
+
+  useEffect(() => {
+    if (selectedEmployee) {
+      fetchAttendance();
+    }
+  }, [selectedEmployee, currentDate]);
+
+  const fetchEmployees = async () => {
+    const { data, error } = await supabase
+      .from('employees')
+      .select(`
+        *,
+        roles:role_id (id, name, salary)
+      `);
+
+    if (error) {
+      console.error('Error fetching employees:', error);
+      return;
+    }
+
+    if (data) {
+      setEmployees(data);
+      if (!selectedEmployee && data.length > 0) {
+        setSelectedEmployee(data[0].id);
+      }
+    }
+    setLoading(false);
+  };
+
+  const fetchAttendance = async () => {
+    const startDate = format(startOfMonth(currentDate), 'yyyy-MM-dd');
+    const endDate = format(endOfMonth(currentDate), 'yyyy-MM-dd');
+
+    const { data, error } = await supabase
+      .from('attendance')
+      .select('*')
+      .eq('employee_id', selectedEmployee)
+      .gte('date', startDate)
+      .lte('date', endDate);
+
+    if (error) {
+      console.error('Error fetching attendance:', error);
+      return;
+    }
+
+    setAttendance(data || []);
 
   useEffect(() => {
     const employeeId = searchParams.get("employee");
@@ -41,9 +94,7 @@ const MonthlyAttendance = () => {
     }
   }, [searchParams]);
 
-  const selectedEmployeeData =
-    defaultEmployees.find((emp) => emp.id === selectedEmployee) ||
-    defaultEmployees[0];
+  const selectedEmployeeData = employees.find(emp => emp.id === selectedEmployee);
 
   // Generate days for the current month
   const daysInMonth = eachDayOfInterval({
@@ -51,15 +102,16 @@ const MonthlyAttendance = () => {
     end: endOfMonth(currentDate),
   });
 
-  // Mock attendance data - in real app, this would come from an API
-  const mockAttendance = daysInMonth.map((day) => ({
+  const attendanceMap = new Map(
+    attendance.map(record => [
+      format(new Date(record.date), 'yyyy-MM-dd'),
+      record.status
+    ])
+  );
+
+  const monthAttendance = daysInMonth.map(day => ({
     date: day,
-    status:
-      Math.random() > 0.7
-        ? Math.random() > 0.5
-          ? "half-day"
-          : "absent"
-        : "present",
+    status: attendanceMap.get(format(day, 'yyyy-MM-dd')) || 'absent'
   }));
 
   const getStatusColor = (status: string) => {
@@ -88,16 +140,18 @@ const MonthlyAttendance = () => {
   };
 
   return (
-    <div className="container mx-auto py-6">
-      <Card className="bg-white">
-        <CardHeader className="flex flex-row items-center justify-between">
-          <div>
-            <CardTitle>Monthly Attendance Overview</CardTitle>
-            <p className="text-sm text-slate-500 mt-1">
+    <div className="container mx-auto py-6 px-4 sm:px-6 lg:px-8">
+      <Card className="bg-white shadow-lg rounded-lg">
+        <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-6 border-b">
+          <div className="mb-4 sm:mb-0">
+            <CardTitle className="text-2xl font-bold text-gray-900">
+              Monthly Attendance Overview
+            </CardTitle>
+            <p className="text-sm text-gray-500 mt-1">
               {selectedEmployeeData.name} - {selectedEmployeeData.role}
             </p>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
             <Select
               value={selectedEmployee}
               onValueChange={setSelectedEmployee}
@@ -106,7 +160,7 @@ const MonthlyAttendance = () => {
                 <SelectValue placeholder="Select employee" />
               </SelectTrigger>
               <SelectContent>
-                {defaultEmployees.map((employee) => (
+                {employees.map((employee) => (
                   <SelectItem key={employee.id} value={employee.id}>
                     {employee.name}
                   </SelectItem>
@@ -117,7 +171,7 @@ const MonthlyAttendance = () => {
               <Button variant="outline" size="icon" onClick={prevMonth}>
                 <ChevronLeft className="h-4 w-4" />
               </Button>
-              <div className="w-[140px] text-center font-medium">
+              <div className="w-[140px] text-center font-medium text-gray-700">
                 {format(currentDate, "MMMM yyyy")}
               </div>
               <Button variant="outline" size="icon" onClick={nextMonth}>
@@ -126,23 +180,32 @@ const MonthlyAttendance = () => {
             </div>
           </div>
         </CardHeader>
-        <CardContent>
-          <div className="rounded-lg border">
+        <CardContent className="p-6">
+          <div className="rounded-lg border shadow-sm overflow-hidden">
             <Table>
-              <TableHeader>
+              <TableHeader className="bg-gray-50">
                 <TableRow>
-                  <TableHead className="w-[100px]">Date</TableHead>
-                  <TableHead>Day</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Work Hours</TableHead>
-                  <TableHead>Notes</TableHead>
+                  <TableHead className="w-[100px] text-gray-700">
+                    Date
+                  </TableHead>
+                  <TableHead className="text-gray-700">Day</TableHead>
+                  <TableHead className="text-gray-700">Status</TableHead>
+                  <TableHead className="text-gray-700">Work Hours</TableHead>
+                  <TableHead className="text-gray-700">Notes</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {mockAttendance.map((day) => (
-                  <TableRow key={day.date.toString()}>
-                    <TableCell>{format(day.date, "d")}</TableCell>
-                    <TableCell>{format(day.date, "EEEE")}</TableCell>
+                {monthAttendance.map((day) => (
+                  <TableRow
+                    key={day.date.toString()}
+                    className="hover:bg-gray-50 transition-colors"
+                  >
+                    <TableCell className="text-gray-900">
+                      {format(day.date, "d")}
+                    </TableCell>
+                    <TableCell className="text-gray-900">
+                      {format(day.date, "EEEE")}
+                    </TableCell>
                     <TableCell>
                       <span
                         className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(day.status)}`}
@@ -150,14 +213,14 @@ const MonthlyAttendance = () => {
                         {day.status}
                       </span>
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="text-gray-900">
                       {day.status === "present"
                         ? "8 hours"
                         : day.status === "half-day"
                           ? "4 hours"
                           : "-"}
                     </TableCell>
-                    <TableCell className="text-slate-500">
+                    <TableCell className="text-gray-500">
                       {day.status === "absent"
                         ? "No attendance recorded"
                         : day.status === "half-day"
@@ -169,24 +232,24 @@ const MonthlyAttendance = () => {
               </TableBody>
             </Table>
           </div>
-          <div className="mt-6 flex justify-between items-center">
+          <div className="mt-6 flex flex-col sm:flex-row justify-between items-center gap-4">
             <div className="flex gap-4">
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 rounded-full bg-green-100"></div>
-                <span className="text-sm">Present</span>
+                <span className="text-sm text-gray-700">Present</span>
               </div>
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 rounded-full bg-yellow-100"></div>
-                <span className="text-sm">Half Day</span>
+                <span className="text-sm text-gray-700">Half Day</span>
               </div>
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 rounded-full bg-red-100"></div>
-                <span className="text-sm">Absent</span>
+                <span className="text-sm text-gray-700">Absent</span>
               </div>
             </div>
-            <div className="text-sm text-slate-500">
+            <div className="text-sm text-gray-500">
               Total Working Hours:{" "}
-              {mockAttendance.reduce((acc, day) => {
+              {monthAttendance.reduce((acc, day) => {
                 if (day.status === "present") return acc + 8;
                 if (day.status === "half-day") return acc + 4;
                 return acc;
