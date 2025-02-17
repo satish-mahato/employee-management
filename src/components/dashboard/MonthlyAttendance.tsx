@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React from "react";
 import { useSearchParams } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -24,95 +24,106 @@ import {
   startOfMonth,
   endOfMonth,
   eachDayOfInterval,
+  isFuture,
+  isToday,
 } from "date-fns";
 
 const MonthlyAttendance = () => {
   const [searchParams] = useSearchParams();
   const [currentDate, setCurrentDate] = React.useState(new Date());
   const [selectedEmployee, setSelectedEmployee] = React.useState<string | null>(
-    searchParams.get("employee") || null
+    searchParams.get("employee") || null,
   );
   const [employees, setEmployees] = React.useState<any[]>([]);
   const [attendance, setAttendance] = React.useState<any[]>([]);
   const [loading, setLoading] = React.useState(true);
 
-  useEffect(() => {
+  React.useEffect(() => {
     fetchEmployees();
   }, []);
 
-  useEffect(() => {
+  React.useEffect(() => {
     if (selectedEmployee) {
       fetchAttendance();
     }
   }, [selectedEmployee, currentDate]);
 
-  const fetchEmployees = async () => {
-    const { data, error } = await supabase
-      .from('employees')
-      .select(`
-        *,
-        roles:role_id (id, name, salary)
-      `);
-
-    if (error) {
-      console.error('Error fetching employees:', error);
-      return;
-    }
-
-    if (data) {
-      setEmployees(data);
-      if (!selectedEmployee && data.length > 0) {
-        setSelectedEmployee(data[0].id);
-      }
-    }
-    setLoading(false);
-  };
-
-  const fetchAttendance = async () => {
-    const startDate = format(startOfMonth(currentDate), 'yyyy-MM-dd');
-    const endDate = format(endOfMonth(currentDate), 'yyyy-MM-dd');
-
-    const { data, error } = await supabase
-      .from('attendance')
-      .select('*')
-      .eq('employee_id', selectedEmployee)
-      .gte('date', startDate)
-      .lte('date', endDate);
-
-    if (error) {
-      console.error('Error fetching attendance:', error);
-      return;
-    }
-
-    setAttendance(data || []);
-  };
-
-  useEffect(() => {
+  React.useEffect(() => {
     const employeeId = searchParams.get("employee");
     if (employeeId) {
       setSelectedEmployee(employeeId);
     }
   }, [searchParams]);
 
-  const selectedEmployeeData = employees.find(emp => emp.id === selectedEmployee);
+  const fetchEmployees = async () => {
+    try {
+      const { data, error } = await supabase.from("employees").select(`
+          *,
+          roles:role_id (id, name, salary)
+        `);
 
-  // Generate days for the current month
+      if (error) throw error;
+
+      if (data) {
+        setEmployees(data);
+        if (!selectedEmployee && data.length > 0) {
+          setSelectedEmployee(data[0].id);
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching employees:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchAttendance = async () => {
+    try {
+      const startDate = format(startOfMonth(currentDate), "yyyy-MM-dd");
+      const endDate = format(endOfMonth(currentDate), "yyyy-MM-dd");
+
+      const { data, error } = await supabase
+        .from("attendance")
+        .select("*")
+        .eq("employee_id", selectedEmployee)
+        .gte("date", startDate)
+        .lte("date", endDate);
+
+      if (error) throw error;
+      setAttendance(data || []);
+    } catch (error) {
+      console.error("Error fetching attendance:", error);
+    }
+  };
+
+  const selectedEmployeeData = employees.find(
+    (emp) => emp.id === selectedEmployee,
+  );
+
   const daysInMonth = eachDayOfInterval({
     start: startOfMonth(currentDate),
     end: endOfMonth(currentDate),
   });
 
   const attendanceMap = new Map(
-    attendance.map(record => [
-      format(new Date(record.date), 'yyyy-MM-dd'),
-      record.status
-    ])
+    attendance.map((record) => [
+      format(new Date(record.date), "yyyy-MM-dd"),
+      record.status,
+    ]),
   );
 
-  const monthAttendance = daysInMonth.map(day => ({
-    date: day,
-    status: attendanceMap.get(format(day, 'yyyy-MM-dd')) || 'absent'
-  }));
+  const monthAttendance = daysInMonth.map((day) => {
+    const isBeforeJoining = selectedEmployeeData?.joining_date
+      ? new Date(selectedEmployeeData.joining_date) > day
+      : false;
+    return {
+      date: day,
+      status: isBeforeJoining
+        ? "not-joined"
+        : attendanceMap.get(format(day, "yyyy-MM-dd")) || "absent",
+      isBeforeJoining,
+    };
+  });
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -122,6 +133,8 @@ const MonthlyAttendance = () => {
         return "bg-yellow-100 text-yellow-800";
       case "absent":
         return "bg-red-100 text-red-800";
+      case "not-joined":
+        return "bg-gray-100 text-gray-500";
       default:
         return "bg-slate-100 text-slate-800";
     }
@@ -178,7 +191,12 @@ const MonthlyAttendance = () => {
               <div className="w-[140px] text-center font-medium text-gray-700">
                 {format(currentDate, "MMMM yyyy")}
               </div>
-              <Button variant="outline" size="icon" onClick={nextMonth}>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={nextMonth}
+                disabled={isFuture(endOfMonth(currentDate))}
+              >
                 <ChevronRight className="h-4 w-4" />
               </Button>
             </div>
@@ -202,7 +220,7 @@ const MonthlyAttendance = () => {
                 {monthAttendance.map((day) => (
                   <TableRow
                     key={day.date.toString()}
-                    className="hover:bg-gray-50 transition-colors"
+                    className={`hover:bg-gray-50 transition-colors ${isFuture(day.date) ? "bg-gray-50" : ""}`}
                   >
                     <TableCell className="text-gray-900">
                       {format(day.date, "d")}
@@ -212,24 +230,36 @@ const MonthlyAttendance = () => {
                     </TableCell>
                     <TableCell>
                       <span
-                        className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(day.status)}`}
+                        className={`px-2 py-1 rounded-full text-xs font-medium ${isFuture(day.date) ? "bg-gray-100 text-gray-500" : getStatusColor(day.status)}`}
                       >
-                        {day.status}
+                        {isFuture(day.date)
+                          ? "Upcoming"
+                          : day.isBeforeJoining
+                            ? "Not Joined"
+                            : day.status}
                       </span>
                     </TableCell>
                     <TableCell className="text-gray-900">
-                      {day.status === "present"
-                        ? "8 hours"
-                        : day.status === "half-day"
-                          ? "4 hours"
-                          : "-"}
+                      {isFuture(day.date)
+                        ? "-"
+                        : day.status === "present"
+                          ? "8 hours"
+                          : day.status === "half-day"
+                            ? "4 hours"
+                            : "-"}
                     </TableCell>
                     <TableCell className="text-gray-500">
-                      {day.status === "absent"
-                        ? "No attendance recorded"
-                        : day.status === "half-day"
-                          ? "Left early"
-                          : "Regular day"}
+                      {isFuture(day.date)
+                        ? "Future date"
+                        : day.isBeforeJoining
+                          ? `Before joining (${format(new Date(selectedEmployeeData?.joining_date), "PP")})`
+                          : isToday(day.date)
+                            ? "Today"
+                            : day.status === "absent"
+                              ? "No attendance recorded"
+                              : day.status === "half-day"
+                                ? "Left early"
+                                : "Regular day"}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -254,6 +284,7 @@ const MonthlyAttendance = () => {
             <div className="text-sm text-gray-500">
               Total Working Hours:{" "}
               {monthAttendance.reduce((acc, day) => {
+                if (isFuture(day.date)) return acc;
                 if (day.status === "present") return acc + 8;
                 if (day.status === "half-day") return acc + 4;
                 return acc;

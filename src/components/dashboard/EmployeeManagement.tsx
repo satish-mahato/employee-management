@@ -1,4 +1,5 @@
 import React from "react";
+import { format } from "date-fns";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -47,6 +48,7 @@ const EmployeeManagement = () => {
   const [formData, setFormData] = React.useState({
     name: "",
     role: "",
+    joining_date: format(new Date(), "yyyy-MM-dd"),
   });
   const [newRole, setNewRole] = React.useState({
     name: "",
@@ -102,7 +104,7 @@ const EmployeeManagement = () => {
 
   const handleEmployeeSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.name || !formData.role) {
+    if (!formData.name || !formData.role || !formData.joining_date) {
       toast({
         variant: "destructive",
         title: "Missing fields",
@@ -118,6 +120,7 @@ const EmployeeManagement = () => {
           .update({
             name: formData.name,
             role_id: formData.role,
+            joining_date: formData.joining_date,
           })
           .eq("id", editingEmployee.id);
 
@@ -128,6 +131,7 @@ const EmployeeManagement = () => {
           {
             name: formData.name,
             role_id: formData.role,
+            joining_date: formData.joining_date,
             avatar_url: `https://api.dicebear.com/7.x/avataaars/svg?seed=${formData.name}`,
             attendance_percentage: 100,
             attendance_streak: 0,
@@ -139,7 +143,11 @@ const EmployeeManagement = () => {
         toast({ title: "Employee added successfully" });
       }
 
-      setFormData({ name: "", role: "" });
+      setFormData({
+        name: "",
+        role: "",
+        joining_date: format(new Date(), "yyyy-MM-dd"),
+      });
       setEditingEmployee(null);
       setIsAddDialogOpen(false);
       await fetchEmployees();
@@ -205,6 +213,7 @@ const EmployeeManagement = () => {
     setFormData({
       name: employee.name,
       role: employee.role_id,
+      joining_date: employee.joining_date || format(new Date(), "yyyy-MM-dd"),
     });
     setIsAddDialogOpen(true);
   };
@@ -350,6 +359,17 @@ const EmployeeManagement = () => {
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+              <div>
+                <Label htmlFor="joining_date">Joining Date</Label>
+                <Input
+                  id="joining_date"
+                  type="date"
+                  value={formData.joining_date}
+                  onChange={(e) =>
+                    setFormData({ ...formData, joining_date: e.target.value })
+                  }
+                />
               </div>
               <DialogFooter>
                 <Button type="submit">
