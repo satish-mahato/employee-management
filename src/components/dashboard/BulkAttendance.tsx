@@ -15,17 +15,30 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { format } from "date-fns";
-import { CalendarIcon } from "lucide-react";
+import { CalendarIcon, CheckCircle, Sun, XCircle, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
 import { Employee } from "@/lib/types";
 import { useToast } from "@/components/ui/use-toast";
+import { Badge } from "@/components/ui/badge";
 
-// Extended type for employees with role information
 type EmployeeWithRole = Employee & {
   role: string;
   currentBalance: number;
+};
+
+const statusIcons = {
+  present: <CheckCircle className="h-4 w-4 mr-2 text-green-600" />,
+  "half-day": <Sun className="h-4 w-4 mr-2 text-yellow-600" />,
+  absent: <XCircle className="h-4 w-4 mr-2 text-red-600" />,
+  "not-marked": null,
 };
 
 const BulkAttendance = () => {
@@ -33,9 +46,8 @@ const BulkAttendance = () => {
   const [employees, setEmployees] = React.useState<EmployeeWithRole[]>([]);
   const [date, setDate] = React.useState<Date>(new Date());
   const [loading, setLoading] = React.useState(true);
-  const [attendanceMap, setAttendanceMap] = React.useState<
-    Record<string, string>
-  >({});
+  const [attendanceMap, setAttendanceMap] = React.useState<Record<string, string>>({});
+  const [showPopup, setShowPopup] = React.useState(false);
 
   React.useEffect(() => {
     fetchEmployees();
@@ -95,9 +107,9 @@ const BulkAttendance = () => {
     }
   };
 
-  const handleIndividualUpdate = async (
+  const handleStatusChange = async (
     employeeId: string,
-    newStatus: "present" | "half-day" | "absent",
+    newStatus: "present" | "half-day" | "absent"
   ) => {
     try {
       const { error } = await supabase.from("attendance").upsert({
@@ -134,15 +146,17 @@ const BulkAttendance = () => {
           date: format(date, "yyyy-MM-dd"),
           status,
         })),
-        { onConflict: "employee_id,date" }
+        { onConflict: "employee_id,date" } // Match composite primary key
       );
-
+  
       if (error) throw error;
-
+  
       toast({
         title: "Attendance Updated",
         description: `Bulk attendance updated for ${format(date, "PPP")}`,
+        variant: "success",
       });
+      setShowPopup(true);
     } catch (error) {
       toast({
         variant: "destructive",
@@ -152,131 +166,135 @@ const BulkAttendance = () => {
     }
   };
 
+  const handleMarkAll = (status: "present" | "half-day" | "absent") => {
+    const newAttendanceMap: Record<string, string> = {};
+    employees.forEach((employee) => {
+      if (!isBeforeJoiningDate(employee, date)) {
+        newAttendanceMap[employee.id] = status;
+      }
+    });
+    setAttendanceMap(newAttendanceMap);
+  };
+
   return (
-    <div className="container mx-auto py-6 px-4 sm:px-6 lg:px-8">
-      <Card className="bg-white shadow-lg rounded-lg">
-        <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-6 border-b">
-          <CardTitle className="text-2xl font-bold text-gray-900">
-            Bulk Attendance Update
-          </CardTitle>
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button
-                variant={"outline"}
-                className={cn(
-                  "w-[240px] justify-start text-left font-normal hover:bg-gray-50 transition-colors",
-                  !date && "text-muted-foreground",
-                )}
-              >
-                <CalendarIcon className="mr-2 h-4 w-4" />
-                {date ? format(date, "PPP") : <span>Pick a date</span>}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0" align="end">
-              <Calendar
-                mode="single"
-                selected={date}
-                onSelect={(newDate) => setDate(newDate || new Date())}
-                disabled={(date) => date > new Date()}
-                initialFocus
-              />
-            </PopoverContent>
-          </Popover>
+    <div className="container mx-auto py-8 px-4 sm:px-6 lg:px-8">
+      <Card className="bg-white shadow-xl rounded-xl overflow-hidden">
+        <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-6">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between">
+            <CardTitle className="text-2xl font-bold mb-4 sm:mb-0">
+              Attendance Management
+            </CardTitle>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="ghost"
+                  className="bg-white/10 hover:bg-white/20 backdrop-blur-sm"
+                >
+                  <CalendarIcon className="mr-2 h-4 w-4" />
+                  {date ? format(date, "PPP") : <span>Select Date</span>}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="end">
+                <Calendar
+                  mode="single"
+                  selected={date}
+                  onSelect={(newDate) => setDate(newDate || new Date())}
+                  disabled={(date) => date > new Date()}
+                  initialFocus
+                />
+              </PopoverContent>
+            </Popover>
+          </div>
         </CardHeader>
         <CardContent className="p-6">
           {loading ? (
-            <div className="text-center py-8">Loading employees...</div>
+            <div className="text-center py-8 text-gray-500">Loading employees...</div>
           ) : employees.length === 0 ? (
-            <div className="text-center py-8">
-              No employees found. Add some employees first.
+            <div className="text-center py-8 text-gray-500">
+              No employees found. Please add employees first.
             </div>
           ) : (
-            <div className="rounded-lg border shadow-sm overflow-hidden">
-              <Table>
+            <div className="rounded-lg border border-gray-100 shadow-sm overflow-hidden">
+              <Table className="border-collapse">
                 <TableHeader className="bg-gray-50">
                   <TableRow>
-                    <TableHead className="text-gray-700">Employee</TableHead>
-                    <TableHead className="text-gray-700">Role</TableHead>
-                    <TableHead className="text-gray-700">
-                      Current Status
-                    </TableHead>
-                    <TableHead className="text-gray-700">Actions</TableHead>
+                    <TableHead className="text-gray-600 font-semibold py-4">Employee</TableHead>
+                    <TableHead className="text-gray-600 font-semibold">Role</TableHead>
+                    <TableHead className="text-gray-600 font-semibold">Status</TableHead>
+                    <TableHead className="text-gray-600 font-semibold text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {employees.map((employee) => {
                     const beforeJoining = isBeforeJoiningDate(employee, date);
+                    const currentStatus = beforeJoining
+                      ? "Not Joined"
+                      : attendanceMap[employee.id] || "Not marked";
+
                     return (
                       <TableRow
                         key={employee.id}
-                        className={`hover:bg-gray-50 transition-colors ${
-                          beforeJoining ? "bg-gray-100" : ""
-                        }`}
+                        className="hover:bg-gray-50 transition-colors border-b border-gray-100"
                       >
-                        <TableCell className="font-medium text-gray-900">
-                          {employee.name}
-                        </TableCell>
-                        <TableCell className="text-gray-900">
-                          {employee.role}
-                        </TableCell>
-                        <TableCell className="capitalize text-gray-900">
-                          {beforeJoining
-                            ? "Not Joined"
-                            : attendanceMap[employee.id] || "Not marked"}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex gap-2">
-                            {!beforeJoining ? (
-                              <>
-                                <Button
-                                  size="sm"
-                                  variant={
-                                    attendanceMap[employee.id] === "present"
-                                      ? "default"
-                                      : "outline"
-                                  }
-                                  className="hover:bg-green-100 hover:text-green-800 transition-colors"
-                                  onClick={() =>
-                                    handleIndividualUpdate(employee.id, "present")
-                                  }
-                                >
-                                  Present
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant={
-                                    attendanceMap[employee.id] === "half-day"
-                                      ? "default"
-                                      : "outline"
-                                  }
-                                  className="hover:bg-yellow-100 hover:text-yellow-800 transition-colors"
-                                  onClick={() =>
-                                    handleIndividualUpdate(employee.id, "half-day")
-                                  }
-                                >
-                                  Half-day
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant={
-                                    attendanceMap[employee.id] === "absent"
-                                      ? "default"
-                                      : "outline"
-                                  }
-                                  className="hover:bg-red-100 hover:text-red-800 transition-colors"
-                                  onClick={() =>
-                                    handleIndividualUpdate(employee.id, "absent")
-                                  }
-                                >
-                                  Absent
-                                </Button>
-                              </>
-                            ) : (
-                              <span className="text-gray-500 text-sm">
-                                Joined on {format(new Date(employee.joining_date), "PP")}
-                              </span>
+                        <TableCell className="font-medium text-gray-900 py-4">
+                          <div className="flex items-center">
+                            <span className="mr-3">{employee.name}</span>
+                            {beforeJoining && (
+                              <Badge variant="outline" className="text-xs text-gray-500">
+                                Joins {format(new Date(employee.joining_date), "PP")}
+                              </Badge>
                             )}
                           </div>
+                        </TableCell>
+                        <TableCell className="text-gray-600">{employee.role}</TableCell>
+                        <TableCell>
+                          <Badge
+                            variant="outline"
+                            className={cn(
+                              "capitalize",
+                              currentStatus === "present" && "bg-green-50 text-green-700",
+                              currentStatus === "half-day" && "bg-yellow-50 text-yellow-700",
+                              currentStatus === "absent" && "bg-red-50 text-red-700",
+                              currentStatus === "Not Joined" && "bg-gray-100 text-gray-500"
+                            )}
+                          >
+                            {currentStatus}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {!beforeJoining && (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="outline" size="sm" className="px-3">
+                                  <span>Edit</span>
+                                  <ChevronDown className="ml-2 h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem
+                                  className="flex items-center"
+                                  onClick={() => handleStatusChange(employee.id, "present")}
+                                >
+                                  <CheckCircle className="h-4 w-4 mr-2 text-green-600" />
+                                  Present
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  className="flex items-center"
+                                  onClick={() => handleStatusChange(employee.id, "half-day")}
+                                >
+                                  <Sun className="h-4 w-4 mr-2 text-yellow-600" />
+                                  Half-day
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  className="flex items-center"
+                                  onClick={() => handleStatusChange(employee.id, "absent")}
+                                >
+                                  <XCircle className="h-4 w-4 mr-2 text-red-600" />
+                                  Absent
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          )}
                         </TableCell>
                       </TableRow>
                     );
@@ -285,16 +303,56 @@ const BulkAttendance = () => {
               </Table>
             </div>
           )}
-          <div className="mt-6 flex justify-end">
+          <div className="mt-6 flex justify-between">
+            <div className="flex space-x-2">
+              <Button
+                className="bg-green-600 hover:bg-green-700 text-white shadow-lg transition-all"
+                onClick={() => handleMarkAll("present")}
+                size="lg"
+              >
+                Mark All Present
+              </Button>
+              <Button
+                className="bg-yellow-600 hover:bg-yellow-700 text-white shadow-lg transition-all"
+                onClick={() => handleMarkAll("half-day")}
+                size="lg"
+              >
+                Mark All Half-Day
+              </Button>
+              <Button
+                className="bg-red-600 hover:bg-red-700 text-white shadow-lg transition-all"
+                onClick={() => handleMarkAll("absent")}
+                size="lg"
+              >
+                Mark All Absent
+              </Button>
+            </div>
             <Button
-              className="bg-blue-600 hover:bg-blue-700 text-white transition-colors"
+              className="bg-blue-600 hover:bg-blue-700 text-white shadow-lg transition-all"
               onClick={handleBulkUpdate}
+              size="lg"
             >
-              Update Attendance
+              Save All Changes
             </Button>
           </div>
         </CardContent>
       </Card>
+      {showPopup && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+          <div className="bg-white p-6 rounded-lg shadow-lg">
+            <h2 className="text-xl font-bold mb-4">Attendance Updated</h2>
+            <p>Bulk attendance has been successfully updated for {format(date, "PPP")}.</p>
+            <div className="mt-4 flex justify-end">
+              <Button
+                className="bg-blue-600 hover:bg-blue-700 text-white"
+                onClick={() => setShowPopup(false)}
+              >
+                Close
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

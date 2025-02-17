@@ -133,10 +133,8 @@ const MonthlyAttendance = () => {
         return "bg-yellow-100 text-yellow-800";
       case "absent":
         return "bg-red-100 text-red-800";
-      case "not-joined":
-        return "bg-gray-100 text-gray-500";
       default:
-        return "bg-slate-100 text-slate-800";
+        return "bg-gray-100 text-gray-500";
     }
   };
 
@@ -213,56 +211,44 @@ const MonthlyAttendance = () => {
                   <TableHead className="text-gray-700">Day</TableHead>
                   <TableHead className="text-gray-700">Status</TableHead>
                   <TableHead className="text-gray-700">Work Hours</TableHead>
-                  <TableHead className="text-gray-700">Notes</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {monthAttendance.map((day) => (
-                  <TableRow
-                    key={day.date.toString()}
-                    className={`hover:bg-gray-50 transition-colors ${isFuture(day.date) ? "bg-gray-50" : ""}`}
-                  >
-                    <TableCell className="text-gray-900">
-                      {format(day.date, "d")}
-                    </TableCell>
-                    <TableCell className="text-gray-900">
-                      {format(day.date, "EEEE")}
-                    </TableCell>
-                    <TableCell>
-                      <span
-                        className={`px-2 py-1 rounded-full text-xs font-medium ${isFuture(day.date) ? "bg-gray-100 text-gray-500" : getStatusColor(day.status)}`}
-                      >
+                {monthAttendance
+                  .filter((day) => !day.isBeforeJoining) // Remove "Not Joined" days
+                  .map((day) => (
+                    <TableRow
+                      key={day.date.toString()}
+                      className={`hover:bg-gray-50 transition-colors ${isFuture(day.date) ? "bg-gray-50" : ""}`}
+                    >
+                      <TableCell className="text-gray-900">
+                        {format(day.date, "d")}
+                      </TableCell>
+                      <TableCell className="text-gray-900">
+                        {format(day.date, "EEEE")}
+                      </TableCell>
+                      <TableCell>
+                        <span
+                          className={`px-2 py-1 rounded-full text-xs font-medium ${isFuture(day.date) ? "bg-gray-100 text-gray-500" : getStatusColor(day.status)}`}
+                        >
+                          {isFuture(day.date)
+                            ? "Upcoming"
+                            : day.status === "not-joined"
+                              ? "Not Joined"
+                              : day.status}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-gray-900">
                         {isFuture(day.date)
-                          ? "Upcoming"
-                          : day.isBeforeJoining
-                            ? "Not Joined"
-                            : day.status}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-gray-900">
-                      {isFuture(day.date)
-                        ? "-"
-                        : day.status === "present"
-                          ? "8 hours"
-                          : day.status === "half-day"
-                            ? "4 hours"
-                            : "-"}
-                    </TableCell>
-                    <TableCell className="text-gray-500">
-                      {isFuture(day.date)
-                        ? "Future date"
-                        : day.isBeforeJoining
-                          ? `Before joining (${format(new Date(selectedEmployeeData?.joining_date), "PP")})`
-                          : isToday(day.date)
-                            ? "Today"
-                            : day.status === "absent"
-                              ? "No attendance recorded"
-                              : day.status === "half-day"
-                                ? "Left early"
-                                : "Regular day"}
-                    </TableCell>
-                  </TableRow>
-                ))}
+                          ? "-"
+                          : day.status === "present"
+                            ? "8 hours"
+                            : day.status === "half-day"
+                              ? "4 hours"
+                              : "-"}
+                      </TableCell>
+                    </TableRow>
+                  ))}
               </TableBody>
             </Table>
           </div>
@@ -284,7 +270,7 @@ const MonthlyAttendance = () => {
             <div className="text-sm text-gray-500">
               Total Working Hours:{" "}
               {monthAttendance.reduce((acc, day) => {
-                if (isFuture(day.date)) return acc;
+                if (isFuture(day.date) || day.isBeforeJoining) return acc;
                 if (day.status === "present") return acc + 8;
                 if (day.status === "half-day") return acc + 4;
                 return acc;

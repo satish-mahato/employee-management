@@ -249,7 +249,7 @@ const EmployeeManagement = () => {
                 <TableHead className="w-[200px]">Employee</TableHead>
                 <TableHead>Role</TableHead>
                 <TableHead>Salary</TableHead>
-                <TableHead>Status</TableHead>
+                <TableHead>Total Day</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
