@@ -22,9 +22,15 @@ import { supabase } from "@/lib/supabase";
 import { Employee } from "@/lib/types";
 import { useToast } from "@/components/ui/use-toast";
 
+// Extended type for employees with role information
+type EmployeeWithRole = Employee & {
+  role: string;
+  currentBalance: number;
+};
+
 const BulkAttendance = () => {
   const { toast } = useToast();
-  const [employees, setEmployees] = React.useState<Employee[]>([]);
+  const [employees, setEmployees] = React.useState<EmployeeWithRole[]>([]);
   const [date, setDate] = React.useState<Date>(new Date());
   const [loading, setLoading] = React.useState(true);
   const [attendanceMap, setAttendanceMap] = React.useState<
@@ -36,7 +42,7 @@ const BulkAttendance = () => {
     fetchAttendance();
   }, [date]);
 
-  const isBeforeJoiningDate = (employee: any, selectedDate: Date) => {
+  const isBeforeJoiningDate = (employee: Employee, selectedDate: Date) => {
     return new Date(employee.joining_date) > selectedDate;
   };
 
@@ -49,14 +55,12 @@ const BulkAttendance = () => {
 
       if (error) throw error;
 
-      if (data) {
-        const formattedEmployees = data.map((emp) => ({
-          ...emp,
-          role: emp.roles?.name || "N/A",
-          currentBalance: emp.roles?.salary || 0,
-        }));
-        setEmployees(formattedEmployees);
-      }
+      const formattedEmployees: EmployeeWithRole[] = data.map((emp) => ({
+        ...emp,
+        role: emp.roles?.name || "N/A",
+        currentBalance: emp.roles?.salary || 0,
+      }));
+      setEmployees(formattedEmployees);
     } catch (error) {
       toast({
         variant: "destructive",
@@ -77,7 +81,7 @@ const BulkAttendance = () => {
 
       if (error) throw error;
 
-      const newAttendanceMap = {};
+      const newAttendanceMap: Record<string, string> = {};
       data?.forEach((record) => {
         newAttendanceMap[record.employee_id] = record.status;
       });
@@ -130,6 +134,7 @@ const BulkAttendance = () => {
           date: format(date, "yyyy-MM-dd"),
           status,
         })),
+        { onConflict: "employee_id,date" }
       );
 
       if (error) throw error;
@@ -204,68 +209,76 @@ const BulkAttendance = () => {
                     return (
                       <TableRow
                         key={employee.id}
-                        className={`hover:bg-gray-50 transition-colors ${beforeJoining ? 'bg-gray-100' : ''}`}
+                        className={`hover:bg-gray-50 transition-colors ${
+                          beforeJoining ? "bg-gray-100" : ""
+                        }`}
                       >
-                      <TableCell className="font-medium text-gray-900">
-                        {employee.name}
-                      </TableCell>
-                      <TableCell className="text-gray-900">
-                        {employee.role}
-                      </TableCell>
-                      <TableCell className="capitalize text-gray-900">
-                        {beforeJoining ? 'Not Joined' : attendanceMap[employee.id] || "Not marked"}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex gap-2">
-                          {!beforeJoining ? (
-                          <Button
-                            size="sm"
-                            variant={
-                              attendanceMap[employee.id] === "present"
-                                ? "default"
-                                : "outline"
-                            }
-                            className="hover:bg-green-100 hover:text-green-800 transition-colors"
-                            onClick={() =>
-                              handleIndividualUpdate(employee.id, "present")
-                            }
-                          >
-                            Present
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant={
-                              attendanceMap[employee.id] === "half-day"
-                                ? "default"
-                                : "outline"
-                            }
-                            className="hover:bg-yellow-100 hover:text-yellow-800 transition-colors"
-                            onClick={() =>
-                              handleIndividualUpdate(employee.id, "half-day")
-                            }
-                          >
-                            Half-day
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant={
-                              attendanceMap[employee.id] === "absent"
-                                ? "default"
-                                : "outline"
-                            }
-                            className="hover:bg-red-100 hover:text-red-800 transition-colors"
-                            onClick={() =>
-                              handleIndividualUpdate(employee.id, "absent")
-                            }
-                          >
-                            Absent
-                          </Button>
-                        </div>
-                        ) : (
-                          <span className="text-gray-500 text-sm">Joined on {format(new Date(employee.joining_date), 'PP')}</span>
-                        )}
-                      </TableCell>
-                    </TableRow>
+                        <TableCell className="font-medium text-gray-900">
+                          {employee.name}
+                        </TableCell>
+                        <TableCell className="text-gray-900">
+                          {employee.role}
+                        </TableCell>
+                        <TableCell className="capitalize text-gray-900">
+                          {beforeJoining
+                            ? "Not Joined"
+                            : attendanceMap[employee.id] || "Not marked"}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex gap-2">
+                            {!beforeJoining ? (
+                              <>
+                                <Button
+                                  size="sm"
+                                  variant={
+                                    attendanceMap[employee.id] === "present"
+                                      ? "default"
+                                      : "outline"
+                                  }
+                                  className="hover:bg-green-100 hover:text-green-800 transition-colors"
+                                  onClick={() =>
+                                    handleIndividualUpdate(employee.id, "present")
+                                  }
+                                >
+                                  Present
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant={
+                                    attendanceMap[employee.id] === "half-day"
+                                      ? "default"
+                                      : "outline"
+                                  }
+                                  className="hover:bg-yellow-100 hover:text-yellow-800 transition-colors"
+                                  onClick={() =>
+                                    handleIndividualUpdate(employee.id, "half-day")
+                                  }
+                                >
+                                  Half-day
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant={
+                                    attendanceMap[employee.id] === "absent"
+                                      ? "default"
+                                      : "outline"
+                                  }
+                                  className="hover:bg-red-100 hover:text-red-800 transition-colors"
+                                  onClick={() =>
+                                    handleIndividualUpdate(employee.id, "absent")
+                                  }
+                                >
+                                  Absent
+                                </Button>
+                              </>
+                            ) : (
+                              <span className="text-gray-500 text-sm">
+                                Joined on {format(new Date(employee.joining_date), "PP")}
+                              </span>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
                     );
                   })}
                 </TableBody>
