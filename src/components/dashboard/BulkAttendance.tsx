@@ -16,20 +16,27 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { format } from "date-fns";
-import { CalendarIcon } from "lucide-react";
+import { CalendarIcon, CheckCircle2, XCircle, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
 import { Employee } from "@/lib/types";
 import { useToast } from "@/components/ui/use-toast";
+import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Skeleton } from "@/components/ui/skeleton";
+
+const statusOptions = [
+  { value: "present", label: "Present", icon: CheckCircle2, color: "bg-green-100 text-green-800" },
+  { value: "half-day", label: "Half Day", icon: Clock, color: "bg-yellow-100 text-yellow-800" },
+  { value: "absent", label: "Absent", icon: XCircle, color: "bg-red-100 text-red-800" },
+];
 
 const BulkAttendance = () => {
   const { toast } = useToast();
   const [employees, setEmployees] = React.useState<Employee[]>([]);
   const [date, setDate] = React.useState<Date>(new Date());
   const [loading, setLoading] = React.useState(true);
-  const [attendanceMap, setAttendanceMap] = React.useState<
-    Record<string, string>
-  >({});
+  const [attendanceMap, setAttendanceMap] = React.useState<Record<string, string>>({});
 
   React.useEffect(() => {
     fetchEmployees();
@@ -39,20 +46,17 @@ const BulkAttendance = () => {
   const fetchEmployees = async () => {
     try {
       const { data, error } = await supabase.from("employees").select(`
-          *,
-          roles:role_id (id, name, salary)
-        `);
+        *, 
+        roles:role_id (id, name, salary)
+      `);
 
       if (error) throw error;
 
-      if (data) {
-        const formattedEmployees = data.map((emp) => ({
-          ...emp,
-          role: emp.roles?.name || "N/A",
-          currentBalance: emp.roles?.salary || 0,
-        }));
-        setEmployees(formattedEmployees);
-      }
+      setEmployees(data?.map(emp => ({
+        ...emp,
+        role: emp.roles?.name || "N/A",
+        currentBalance: emp.roles?.salary || 0,
+      })) || []);
     } catch (error) {
       toast({
         variant: "destructive",
@@ -73,11 +77,12 @@ const BulkAttendance = () => {
 
       if (error) throw error;
 
-      const newAttendanceMap = {};
-      data?.forEach((record) => {
-        newAttendanceMap[record.employee_id] = record.status;
-      });
-      setAttendanceMap(newAttendanceMap);
+      const newAttendanceMap = data?.reduce((acc, record) => ({
+        ...acc,
+        [record.employee_id]: record.status
+      }), {});
+      
+      setAttendanceMap(newAttendanceMap || {});
     } catch (error) {
       toast({
         variant: "destructive",
@@ -87,57 +92,54 @@ const BulkAttendance = () => {
     }
   };
 
-  const handleIndividualUpdate = async (
-    employeeId: string,
-    newStatus: "present" | "half-day" | "absent",
-  ) => {
+  const updateStatus = async (employeeId: string, status: string) => {
     try {
       const { error } = await supabase.from("attendance").upsert({
         employee_id: employeeId,
         date: format(date, "yyyy-MM-dd"),
-        status: newStatus,
+        status,
       });
 
       if (error) throw error;
 
-      setAttendanceMap((prev) => ({
-        ...prev,
-        [employeeId]: newStatus,
-      }));
-
-      toast({
-        title: "Status updated",
-        description: `Attendance marked as ${newStatus} for ${format(date, "PPP")}`,
-      });
+      setAttendanceMap(prev => ({ ...prev, [employeeId]: status }));
     } catch (error) {
       toast({
         variant: "destructive",
-        title: "Error updating attendance",
+        title: "Error updating status",
         description: error.message,
       });
     }
   };
 
-  const handleBulkUpdate = async () => {
+  const handleBulkAction = (status: string) => {
+    const newAttendanceMap = { ...attendanceMap };
+    employees.forEach(emp => {
+      newAttendanceMap[emp.id] = status;
+    });
+    setAttendanceMap(newAttendanceMap);
+  };
+
+  const saveBulkAttendance = async () => {
     try {
       const { error } = await supabase.from("attendance").upsert(
         Object.entries(attendanceMap).map(([employeeId, status]) => ({
           employee_id: employeeId,
           date: format(date, "yyyy-MM-dd"),
           status,
-        })),
+        }))
       );
 
       if (error) throw error;
 
       toast({
-        title: "Attendance Updated",
-        description: `Bulk attendance updated for ${format(date, "PPP")}`,
+        title: "Attendance Saved",
+        description: `Attendance records updated for ${format(date, "PPP")}`,
       });
     } catch (error) {
       toast({
         variant: "destructive",
-        title: "Error updating attendance",
+        title: "Error saving attendance",
         description: error.message,
       });
     }
@@ -145,113 +147,150 @@ const BulkAttendance = () => {
 
   return (
     <div className="container mx-auto py-6 px-4 sm:px-6 lg:px-8">
-      <Card className="bg-white shadow-lg rounded-lg">
-        <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-6 border-b">
-          <CardTitle className="text-2xl font-bold text-gray-900">
-            Bulk Attendance Update
-          </CardTitle>
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button
-                variant={"outline"}
-                className={cn(
-                  "w-[240px] justify-start text-left font-normal hover:bg-gray-50 transition-colors",
-                  !date && "text-muted-foreground",
-                )}
-              >
-                <CalendarIcon className="mr-2 h-4 w-4" />
-                {date ? format(date, "PPP") : <span>Pick a date</span>}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0" align="end">
-              <Calendar
-                mode="single"
-                selected={date}
-                onSelect={(newDate) => setDate(newDate || new Date())}
-                initialFocus
-              />
-            </PopoverContent>
-          </Popover>
+      <Card className="bg-white shadow-lg rounded-xl overflow-hidden">
+        <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-6 bg-gray-50 border-b">
+          <div className="space-y-1 mb-4 sm:mb-0">
+            <CardTitle className="text-2xl font-semibold text-gray-900">
+              Attendance Management
+            </CardTitle>
+            <p className="text-sm text-gray-500">
+              Update attendance records for your team
+            </p>
+          </div>
+          
+          <div className="flex items-center gap-3">
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  className={cn(
+                    "w-[240px] justify-start text-left font-normal",
+                    !date && "text-muted-foreground"
+                  )}
+                >
+                  <CalendarIcon className="mr-2 h-4 w-4" />
+                  {date ? format(date, "PPP") : <span>Select date</span>}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="end">
+                <Calendar
+                  mode="single"
+                  selected={date}
+                  onSelect={setDate}
+                  initialFocus
+                />
+              </PopoverContent>
+            </Popover>
+          </div>
         </CardHeader>
+
         <CardContent className="p-6">
+          <div className="mb-6 flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              onClick={() => handleBulkAction("present")}
+              className="border-green-200 text-green-800 hover:bg-green-50"
+            >
+              Mark All Present
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => handleBulkAction("half-day")}
+              className="border-yellow-200 text-yellow-800 hover:bg-yellow-50"
+            >
+              Mark All Half Day
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => handleBulkAction("absent")}
+              className="border-red-200 text-red-800 hover:bg-red-50"
+            >
+              Mark All Absent
+            </Button>
+          </div>
+
           {loading ? (
-            <div className="text-center py-8">Loading employees...</div>
+            <div className="space-y-4">
+              {[...Array(5)].map((_, i) => (
+                <Skeleton key={i} className="h-16 w-full rounded-lg" />
+              ))}
+            </div>
           ) : employees.length === 0 ? (
-            <div className="text-center py-8">
-              No employees found. Add some employees first.
+            <div className="text-center py-8 space-y-4">
+              <div className="text-gray-500">No employees found</div>
+              <Button>Add Employees</Button>
             </div>
           ) : (
-            <div className="rounded-lg border shadow-sm overflow-hidden">
+            <div className="rounded-lg border overflow-hidden">
               <Table>
                 <TableHeader className="bg-gray-50">
                   <TableRow>
-                    <TableHead className="text-gray-700">Employee</TableHead>
-                    <TableHead className="text-gray-700">Role</TableHead>
-                    <TableHead className="text-gray-700">
-                      Current Status
-                    </TableHead>
-                    <TableHead className="text-gray-700">Actions</TableHead>
+                    <TableHead className="w-[300px]">Employee</TableHead>
+                    <TableHead>Role</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {employees.map((employee) => (
-                    <TableRow
-                      key={employee.id}
-                      className="hover:bg-gray-50 transition-colors"
-                    >
-                      <TableCell className="font-medium text-gray-900">
-                        {employee.name}
+                    <TableRow key={employee.id} className="hover:bg-gray-50 group">
+                      <TableCell>
+                        <div className="flex items-center gap-3">
+                          <Avatar className="h-9 w-9">
+                            <AvatarImage src={employee.avatar_url} />
+                            <AvatarFallback>
+                              {employee.name[0]}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <div className="font-medium text-gray-900">
+                              {employee.name}
+                            </div>
+                            <div className="text-sm text-gray-500">
+                              {employee.roles?.salary?.toLocaleString("en-US", {
+                                style: "currency",
+                                currency: "USD",
+                              })}
+                            </div>
+                          </div>
+                        </div>
                       </TableCell>
-                      <TableCell className="text-gray-900">
+                      <TableCell className="text-gray-600">
                         {employee.role}
                       </TableCell>
-                      <TableCell className="capitalize text-gray-900">
-                        {attendanceMap[employee.id] || "Not marked"}
-                      </TableCell>
                       <TableCell>
-                        <div className="flex gap-2">
-                          <Button
-                            size="sm"
-                            variant={
-                              attendanceMap[employee.id] === "present"
-                                ? "default"
-                                : "outline"
-                            }
-                            className="hover:bg-green-100 hover:text-green-800 transition-colors"
-                            onClick={() =>
-                              handleIndividualUpdate(employee.id, "present")
-                            }
-                          >
-                            Present
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant={
-                              attendanceMap[employee.id] === "half-day"
-                                ? "default"
-                                : "outline"
-                            }
-                            className="hover:bg-yellow-100 hover:text-yellow-800 transition-colors"
-                            onClick={() =>
-                              handleIndividualUpdate(employee.id, "half-day")
-                            }
-                          >
-                            Half-day
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant={
-                              attendanceMap[employee.id] === "absent"
-                                ? "default"
-                                : "outline"
-                            }
-                            className="hover:bg-red-100 hover:text-red-800 transition-colors"
-                            onClick={() =>
-                              handleIndividualUpdate(employee.id, "absent")
-                            }
-                          >
-                            Absent
-                          </Button>
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            "capitalize",
+                            statusOptions.find(s => s.value === attendanceMap[employee.id])?.color
+                          )}
+                        >
+                          {attendanceMap[employee.id] || "Not marked"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex gap-2 justify-end">
+                          {statusOptions.map(({ value, label, icon: Icon }) => (
+                            <Button
+                              key={value}
+                              size="sm"
+                              variant={
+                                attendanceMap[employee.id] === value
+                                  ? "default"
+                                  : "outline"
+                              }
+                              className={cn(
+                                "gap-1.5",
+                                attendanceMap[employee.id] !== value &&
+                                  statusOptions.find(s => s.value === value)?.color
+                              )}
+                              onClick={() => updateStatus(employee.id, value)}
+                            >
+                              <Icon className="h-4 w-4" />
+                              <span className="sr-only">{label}</span>
+                            </Button>
+                          ))}
                         </div>
                       </TableCell>
                     </TableRow>
@@ -260,14 +299,21 @@ const BulkAttendance = () => {
               </Table>
             </div>
           )}
-          <div className="mt-6 flex justify-end">
-            <Button
-              className="bg-blue-600 hover:bg-blue-700 text-white transition-colors"
-              onClick={handleBulkUpdate}
-            >
-              Update Attendance
-            </Button>
-          </div>
+
+          {employees.length > 0 && (
+            <div className="mt-6 flex justify-end gap-3">
+              <Button
+                variant="outline"
+                onClick={() => setAttendanceMap({})}
+              >
+                Reset Changes
+              </Button>
+              <Button onClick={saveBulkAttendance} className="gap-1.5">
+                <CheckCircle2 className="h-4 w-4" />
+                Save Attendance
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

@@ -21,7 +21,6 @@ import { supabase } from "@/lib/supabase";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import {
   format,
-  getDaysInMonth,
   startOfMonth,
   endOfMonth,
   eachDayOfInterval,
@@ -86,6 +85,7 @@ const MonthlyAttendance = () => {
     }
 
     setAttendance(data || []);
+  };
 
   useEffect(() => {
     const employeeId = searchParams.get("employee");
@@ -139,6 +139,10 @@ const MonthlyAttendance = () => {
     );
   };
 
+  if (loading) {
+    return <div>Loading...</div>;
+  }
+
   return (
     <div className="container mx-auto py-6 px-4 sm:px-6 lg:px-8">
       <Card className="bg-white shadow-lg rounded-lg">
@@ -148,7 +152,7 @@ const MonthlyAttendance = () => {
               Monthly Attendance Overview
             </CardTitle>
             <p className="text-sm text-gray-500 mt-1">
-              {selectedEmployeeData.name} - {selectedEmployeeData.role}
+              {selectedEmployeeData?.name} - {selectedEmployeeData?.roles?.name}
             </p>
           </div>
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
