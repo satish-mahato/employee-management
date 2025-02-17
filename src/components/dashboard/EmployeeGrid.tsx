@@ -14,28 +14,98 @@ const EmployeeGrid = ({ employees }: EmployeeGridProps) => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const fetchEmployees = async () => {
+    const fetchEmployeesWithStats = async () => {
       try {
-        const { data, error } = await supabase
-          .from("employees")
-          .select(`
+        // Get current date and start of month
+        const today = new Date();
+        const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+        const daysInMonth = new Date(
+          today.getFullYear(),
+          today.getMonth() + 1,
+          0,
+        ).getDate();
+
+        // Fetch employees with their roles
+        const { data: employeesData, error: employeesError } =
+          await supabase.from("employees").select(`
             *,
             roles:role_id (id, name, salary)
           `);
 
-        if (error) throw error;
+        if (employeesError) throw employeesError;
 
-        if (data) {
-          const formattedEmployees = data.map((emp) => ({
-            id: emp.id,
-            name: emp.name,
-            role: emp.roles?.name || "N/A",
-            avatarUrl: emp.avatarurl,
-            attendancePercentage: emp.attendancepercentage || 0,
-            attendanceStreak: emp.attendancestreak || 0,
-            currentBalance: emp.roles?.salary || 0,
-            status: emp.status || "present",
-          }));
+        // Fetch attendance records for the current month
+        const { data: attendanceData, error: attendanceError } = await supabase
+          .from("attendance")
+          .select("*")
+          .gte("date", startOfMonth.toISOString().split("T")[0]);
+
+        if (attendanceError) throw attendanceError;
+
+        if (employeesData) {
+          const formattedEmployees = await Promise.all(
+            employeesData.map(async (emp) => {
+              // Calculate attendance percentage and salary
+              const employeeAttendance = attendanceData.filter(
+                (a) => a.employee_id === emp.id,
+              );
+              const workingDays = Math.min(
+                daysInMonth,
+                Math.floor(
+                  (today - new Date(emp.joining_date)) / (1000 * 60 * 60 * 24),
+                ) + 1,
+              );
+              const presentDays = employeeAttendance.filter(
+                (a) => a.status === "present",
+              ).length;
+              const halfDays = employeeAttendance.filter(
+                (a) => a.status === "half-day",
+              ).length;
+
+              // Calculate attendance percentage
+              const attendancePercentage = Math.round(
+                ((presentDays + halfDays * 0.5) / workingDays) * 100,
+              );
+
+              // Calculate salary based on hours worked
+              const dailySalary = (emp.roles?.salary || 0) / daysInMonth;
+              const hoursWorked = presentDays * 8 + halfDays * 4; // 8 hours for full day, 4 for half
+              const expectedHours = workingDays * 8;
+              const currentBalance = Math.round(
+                (hoursWorked / expectedHours) * (emp.roles?.salary || 0),
+              );
+
+              // Calculate attendance streak
+              let streak = 0;
+              const sortedAttendance = employeeAttendance.sort(
+                (a, b) =>
+                  new Date(b.date).getTime() - new Date(a.date).getTime(),
+              );
+
+              for (const record of sortedAttendance) {
+                if (
+                  record.status === "present" ||
+                  record.status === "half-day"
+                ) {
+                  streak++;
+                } else {
+                  break;
+                }
+              }
+
+              return {
+                id: emp.id,
+                name: emp.name,
+                role: emp.roles?.name || "N/A",
+                avatarUrl: emp.avatar_url,
+                attendancePercentage: attendancePercentage || 0,
+                attendanceStreak: streak,
+                currentBalance: currentBalance,
+                status: emp.status || "present",
+              };
+            }),
+          );
+
           setSupabaseEmployees(formattedEmployees);
         }
       } catch (err) {
@@ -45,7 +115,7 @@ const EmployeeGrid = ({ employees }: EmployeeGridProps) => {
       }
     };
 
-    fetchEmployees();
+    fetchEmployeesWithStats();
   }, []);
 
   if (loading) {
